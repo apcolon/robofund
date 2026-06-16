@@ -11,13 +11,13 @@ past or from this morning.
 
 ## Status
 
-**Phase 3 — First real strategy.** MA crossover + metrics + scoreboard. ✅
+**Phase 4 — Polish the visuals.** Underwater plot, candlesticks, tearsheet. ✅
 
 Roadmap:
 1. **Data + first plot** — prove the toolchain works. ✅
 2. **The engine** — strategy interface + a simulator that replays bars. ✅
-3. **First real strategy** — moving-average crossover + metrics + equity curve. ✅ *(you are here)*
-4. **Polish the visuals** — drawdowns, candlesticks with trade markers, tearsheet.
+3. **First real strategy** — moving-average crossover + metrics + equity curve. ✅
+4. **Polish the visuals** — drawdowns, candlesticks with trade markers, tearsheet. ✅ *(you are here)*
 5. **ML strategy** — engineer features, train a classifier, backtest it, get humbled.
 6. **Live scoreboard** — run every strategy on fresh daily data automatically.
 
