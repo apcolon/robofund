@@ -1,0 +1,4 @@
+# Phase 1 dependencies. Add to this file as later phases need more.
+yfinance>=0.2.40
+pandas>=2.0
+matplotlib>=3.8

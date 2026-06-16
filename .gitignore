@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Generated charts / artifacts
+*.png
+data_cache/
+
+# Editor / OS
+.vscode/
+.DS_Store
