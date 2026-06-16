@@ -171,7 +171,7 @@ Robofund is built in phases — each one ends with something working you can run
 3. **First real strategy** — moving-average crossover + metrics + scoreboard. ✅
 4. **Polish the visuals** — drawdowns, candlesticks with trade markers, tearsheet. ✅
 5. **ML strategy** — engineer features, train a classifier to predict next-day
-   direction, and backtest it as just another robot.
+   direction, and backtest it as just another robot. ✅
 6. **Live daily scoreboard** — run every robot on fresh daily data automatically,
    turning the backtester into an ongoing paper-trading scoreboard you check each
    morning.
