@@ -8,6 +8,9 @@ venv/
 *.png
 data_cache/
 
+# ...but keep the curated charts used in the README
+!docs/images/*.png
+
 # Editor / OS
 .vscode/
 .DS_Store
