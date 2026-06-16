@@ -23,15 +23,17 @@ how would I have done?"* Robofund makes that concrete. You define a strategy as 
 small plug-in, and the engine simulates trading it one day at a time with a
 starting cash balance, tracking every trade and the account's value along the way.
 
-Two strategies ship today:
+Three robots ship today:
 
 - **Buy & Hold** — buy on day one, never sell. The brutally hard baseline.
 - **Moving-Average Crossover** — a trend-follower that holds the stock while a
   fast price average is above a slow one, and retreats to cash when it isn't.
+- **ML (RandomForest)** — a machine-learning robot that engineers features from
+  price history and trains a classifier to predict next-day direction.
 
 Because every strategy implements the **same interface**, the engine can run any
-of them without caring which is which — so adding a third robot is a ~15-line
-file, not a rewrite.
+of them without caring which is which — even the ML model plugs into the exact
+same loop. Adding a robot is a small file, not a rewrite.
 
 ### The scoreboard
 
@@ -75,6 +77,9 @@ yfinance ─▶ DataFeed ─▶ Engine ─▶ Broker ─▶ Metrics ─▶ Plots
 | [`robofund/engine.py`](robofund/engine.py) | **Engine** — the event-driven simulator that replays bars one day at a time. The heart of the project. |
 | [`robofund/metrics.py`](robofund/metrics.py) | **Metrics** — turns an equity curve into scores: total return, CAGR, volatility, Sharpe ratio, max drawdown. |
 | [`robofund/plotting.py`](robofund/plotting.py) | **Plotting** — reusable charts: equity curves, the underwater drawdown plot, and candlesticks with trade markers. |
+| [`robofund/features.py`](robofund/features.py) | **Features** — turns raw prices into backward-only signals (returns, volatility, RSI, momentum, volume) for the ML robot. |
+| [`robofund/ml_strategy.py`](robofund/ml_strategy.py) | **ML strategy** — wraps a trained scikit-learn classifier as a robot that invests when it predicts "up." |
+| [`robofund/report.py`](robofund/report.py) | **Report** — builds the daily scoreboard, clips it to the live (out-of-sample) window, and persists a running ledger. |
 
 ### The one idea that matters: no peeking at the future
 
@@ -95,9 +100,25 @@ bars up to today (`history[: i + 1]`), so it *cannot* cheat. This is the single
 most common way backtests lie, and the engine is designed so it can't happen.
 
 That same property has a bonus: because the engine processes bars in real-world
-order, the *exact same loop* could run on this morning's bar instead of a
+order, the *exact same loop* runs on this morning's bar just as well as a
 historical one — turning a backtest into live paper trading with no rewrite.
-That's where the project is headed (see the roadmap).
+That's exactly what the daily scoreboard below does.
+
+### The daily scoreboard
+
+[`scripts/daily.py`](scripts/daily.py) is the "run it every morning" command. It
+pulls fresh data through today, runs the whole fund, prints **each robot's order
+for the next trading day**, scores them over the live out-of-sample window (every
+robot restarted at the same $10k), saves a chart, and appends a dated row to a
+running ledger — so a genuine forward track record grows one day at a time.
+
+![Live scoreboard — Buy & Hold vs MA Crossover vs ML](docs/images/daily_scoreboard.png)
+
+Honesty note baked into the code: the ML robot needs years of past data to train,
+so it runs over full history — but the scoreboard only *scores* the period it was
+never trained on. An earlier version accidentally scored the in-sample years too
+and the ML robot showed a fake +2,000% return; clipping to the live window
+([`clip_to_live`](robofund/report.py)) is what keeps the numbers truthful.
 
 ### Reading the tearsheet
 
@@ -137,6 +158,8 @@ python scripts/first_plot.py       # Phase 1: plot a ticker's price
 python scripts/run_backtest.py     # Phase 2: run one robot through the engine
 python scripts/compare.py          # Phase 3: head-to-head scoreboard
 python scripts/tearsheet.py        # Phase 4: the full summary card
+python scripts/ml_backtest.py      # Phase 5: train + test the ML robot
+python scripts/daily.py            # Phase 6: the daily scoreboard + ledger
 ```
 
 Want to test your own idea? Open [`scripts/compare.py`](scripts/compare.py),
@@ -155,9 +178,14 @@ robofund/            # the engine — importable package
   engine.py          # the event-driven simulator
   metrics.py         # scoring an equity curve
   plotting.py        # the chart toolkit
+  features.py        # price -> ML features (returns, RSI, momentum, volume)
+  ml_strategy.py     # a trained classifier wrapped as a robot
+  report.py          # daily scoreboard + running ledger
 scripts/             # runnable entry points, one per phase
-  first_plot.py · run_backtest.py · compare.py · tearsheet.py
+  first_plot.py · run_backtest.py · compare.py
+  tearsheet.py · ml_backtest.py · daily.py
 docs/images/         # charts embedded in this README
+reports/             # daily.py output: ledger.csv, scoreboard.png (gitignored)
 ```
 
 ---
@@ -172,9 +200,11 @@ Robofund is built in phases — each one ends with something working you can run
 4. **Polish the visuals** — drawdowns, candlesticks with trade markers, tearsheet. ✅
 5. **ML strategy** — engineer features, train a classifier to predict next-day
    direction, and backtest it as just another robot. ✅
-6. **Live daily scoreboard** — run every robot on fresh daily data automatically,
-   turning the backtester into an ongoing paper-trading scoreboard you check each
-   morning.
+6. **Live daily scoreboard** — run every robot on fresh daily data, read off each
+   one's order for tomorrow, and grow a running ledger you check each morning. ✅
+
+All six phases are built. Next ideas: more strategies, a basket of tickers,
+transaction-cost realism everywhere, and automating the daily run.
 
 ---
 

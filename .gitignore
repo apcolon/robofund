@@ -7,6 +7,7 @@ venv/
 # Generated charts / artifacts
 *.png
 data_cache/
+reports/          # daily.py runtime output (ledger, scoreboard, today's note)
 
 # ...but keep the curated charts used in the README
 !docs/images/*.png
