@@ -1,19 +1,26 @@
 """
 daily.py — Phase 6: the daily heartbeat.
 
-Run this each morning. It pulls fresh market data through today, runs the whole
-fund of robots, tells you what each one wants to do next, scores them, saves a
-scoreboard chart, and appends a dated snapshot to a running ledger.
+Run this each morning. For every ticker in your watchlist it pulls fresh data
+through today, runs the whole fund of robots, tells you what each one wants to do
+next, scores them, saves a scoreboard chart, and appends a dated snapshot to a
+running ledger.
 
 This is the same engine from phase 2 — the only change is that the data now ends
 *today* instead of in the past. A backtest that ends today IS a live paper-trade.
 
 Run from the project root:
     python scripts/daily.py
+
+To track different stocks, just edit the WATCHLIST below. Each ticker is run
+independently — the robots compete on each stock separately (this is NOT one
+shared basket of money; that would be a bigger change to the engine).
 """
 
 import sys
+from dataclasses import replace
 from datetime import date
+from math import ceil
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -34,7 +41,9 @@ from robofund.report import (
 )
 from robofund.strategy import BuyAndHold, MovingAverageCrossover
 
-TICKER = "AAPL"
+# 👇 Your watchlist. Add or remove symbols freely — the fund runs on each one.
+WATCHLIST = ["AAPL", "MSFT", "NVDA", "SPY"]
+
 DATA_START = "2018-01-01"          # far enough back for MA-200 + ML training
 ML_TRAIN_END = date(2022, 1, 1)    # ML trains only on data before this -> live period is out-of-sample
 LIVE_SINCE = ML_TRAIN_END          # score everyone only on the out-of-sample window, starting equal
@@ -43,9 +52,9 @@ REPORTS = Path("reports")
 
 
 def build_fund(bars):
-    """Assemble the competing robots. The ML one is trained here, on history
-    strictly before ML_TRAIN_END, so every signal it issues for the live period
-    is on data it never trained on."""
+    """Assemble the competing robots for one ticker. The ML one is trained here,
+    on history strictly before ML_TRAIN_END, so every signal it issues for the
+    live period is on data it never trained on. Each ticker gets its own model."""
     dates, X, y = build_dataset(bars)
     train_X = [x for d, x in zip(dates, X) if d < ML_TRAIN_END]
     train_y = [t for d, t in zip(dates, y) if d < ML_TRAIN_END]
@@ -60,12 +69,9 @@ def build_fund(bars):
     ]
 
 
-def main() -> None:
-    # end=None -> through the latest available trading day (today, live).
-    bars = load_bars(TICKER, start=DATA_START, end=None)
-    as_of = bars[-1].day
-    print(f"\n=== Robofund daily — {TICKER} — data through {as_of} ===\n")
-
+def run_ticker(ticker: str):
+    """Run the whole fund on one ticker. Returns (as_of_date, scoreboard rows)."""
+    bars = load_bars(ticker, start=DATA_START, end=None)  # end=None -> through today
     robots = build_fund(bars)
 
     rows = []
@@ -78,41 +84,72 @@ def main() -> None:
         todays_signal = robot.on_bar(bars)
         rows.append(score(robot.name, todays_signal, result))
 
+    return bars[-1].day, rows
+
+
+def main() -> None:
+    REPORTS.mkdir(exist_ok=True)
+    print(f"\n=== Robofund daily — watchlist: {', '.join(WATCHLIST)} ===")
     print(f"Live scoreboard since {LIVE_SINCE} (out-of-sample for the ML robot), "
           f"each robot started at ${STARTING_CASH:,.0f}.\n")
-    print(orders_block(rows, as_of))
-    print()
-    print(scoreboard_table(rows))
-    print()
 
-    # --- Persist a dated snapshot so a live record accumulates day by day. ---
-    days_logged = update_ledger(REPORTS / "ledger.csv", as_of, rows)
+    results: dict[str, tuple] = {}
+    ledger_rows = []  # all (ticker, robot) rows flattened, for one combined ledger row
+    note_sections = []
+
+    for ticker in WATCHLIST:
+        as_of, rows = run_ticker(ticker)
+        results[ticker] = (as_of, rows)
+
+        print(f"--- {ticker}  (through {as_of}) ---")
+        print(orders_block(rows, as_of))
+        print()
+        print(scoreboard_table(rows))
+        print()
+
+        # Prefix each row's name with the ticker so the ledger columns stay unique.
+        ledger_rows += [replace(r, name=f"{ticker} {r.name}") for r in rows]
+        note_sections.append(
+            f"## {ticker}  (through {as_of})\n\n"
+            f"```\n{orders_block(rows, as_of)}\n```\n\n"
+            f"```\n{scoreboard_table(rows)}\n```\n"
+        )
+
+    # --- One combined ledger row per day, covering every ticker + robot. ---
+    as_of = max(a for a, _ in results.values())
+    days_logged = update_ledger(REPORTS / "ledger.csv", as_of, ledger_rows)
     print(f"Ledger now holds {days_logged} day(s) of live history -> {REPORTS / 'ledger.csv'}")
 
-    # --- Scoreboard chart. ---
-    REPORTS.mkdir(exist_ok=True)
-    fig, ax = plt.subplots(figsize=(11, 6))
-    for r in rows:
-        ax.plot(r.result.days, r.result.equity, linewidth=1.6, label=r.name)
-    ax.axhline(STARTING_CASH, color="#94a3b8", linestyle="--", linewidth=1)
-    ax.set_title(f"Robofund scoreboard — {TICKER}, through {as_of}",
-                 fontsize=14, fontweight="bold")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Account value ($)")
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc="upper left")
-    fig.autofmt_xdate()
+    # --- Scoreboard chart: one small panel per ticker. ---
+    ncols = 2 if len(WATCHLIST) > 1 else 1
+    nrows = ceil(len(WATCHLIST) / ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(7 * ncols, 4 * nrows), squeeze=False)
+    for i, ticker in enumerate(WATCHLIST):
+        ax = axes[i // ncols][i % ncols]
+        _, rows = results[ticker]
+        for r in rows:
+            ax.plot(r.result.days, r.result.equity, linewidth=1.4, label=r.name)
+        ax.axhline(STARTING_CASH, color="#94a3b8", linestyle="--", linewidth=1)
+        ax.set_title(ticker, fontsize=12, fontweight="bold")
+        ax.set_ylabel("Account value ($)")
+        ax.grid(True, alpha=0.3)
+        if i == 0:
+            ax.legend(loc="upper left", fontsize=8)
+    # Hide any empty panels in the grid.
+    for j in range(len(WATCHLIST), nrows * ncols):
+        axes[j // ncols][j % ncols].axis("off")
+    fig.suptitle(f"Robofund scoreboard — through {as_of}", fontsize=14, fontweight="bold")
     fig.tight_layout()
     fig.savefig(REPORTS / "scoreboard.png", dpi=140)
     print(f"Saved {REPORTS / 'scoreboard.png'}")
 
-    # --- A human-readable daily note. ---
+    # --- A human-readable daily note covering the whole watchlist. ---
     note = REPORTS / "today.md"
     note.write_text(
         f"# Robofund — {as_of}\n\n"
-        f"**Ticker:** {TICKER}  \n**Days of live history logged:** {days_logged}\n\n"
-        f"## Orders for the next trading day\n\n```\n{orders_block(rows, as_of)}\n```\n\n"
-        f"## Scoreboard\n\n```\n{scoreboard_table(rows)}\n```\n"
+        f"**Watchlist:** {', '.join(WATCHLIST)}  \n"
+        f"**Days of live history logged:** {days_logged}\n\n"
+        + "\n".join(note_sections)
     )
     print(f"Wrote {note}")
 

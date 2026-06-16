@@ -106,13 +106,15 @@ That's exactly what the daily scoreboard below does.
 
 ### The daily scoreboard
 
-[`scripts/daily.py`](scripts/daily.py) is the "run it every morning" command. It
-pulls fresh data through today, runs the whole fund, prints **each robot's order
-for the next trading day**, scores them over the live out-of-sample window (every
-robot restarted at the same $10k), saves a chart, and appends a dated row to a
-running ledger — so a genuine forward track record grows one day at a time.
+[`scripts/daily.py`](scripts/daily.py) is the "run it every morning" command. For
+each ticker in a configurable `WATCHLIST`, it pulls fresh data through today, runs
+the whole fund, prints **each robot's order for the next trading day**, scores
+them over the live out-of-sample window (every robot restarted at the same $10k),
+saves a chart, and appends a dated row to a running ledger — so a genuine forward
+track record grows one day at a time. Each stock is run independently (it's not
+one shared pot of money — that would be a multi-asset portfolio, a future step).
 
-![Live scoreboard — Buy & Hold vs MA Crossover vs ML](docs/images/daily_scoreboard.png)
+![Live scoreboard across a watchlist of stocks](docs/images/daily_scoreboard.png)
 
 Honesty note baked into the code: the ML robot needs years of past data to train,
 so it runs over full history — but the scoreboard only *scores* the period it was
